@@ -1,0 +1,28 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Meeting {
+  id          String       @id @default(cuid())
+  title       String
+  minutes     String
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  actionItems ActionItem[]
+}
+
+model ActionItem {
+  id        String   @id @default(cuid())
+  content   String
+  assignee  String?
+  dueDate   DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  meetingId String
+  meeting   Meeting  @relation(fields: [meetingId], references: [id])
+}
