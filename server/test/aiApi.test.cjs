@@ -36,6 +36,7 @@ const startServer = async () => {
     cwd: process.cwd(),
     env: {
       ...env,
+      NODE_ENV: "test",
       PORT: testPort,
     },
     stdio: ["ignore", "pipe", "pipe"],
@@ -93,5 +94,11 @@ test("AI structure API reports missing OpenRouter key without exposing secrets",
   });
 
   assert.equal(response.status, 500);
-  assert.deepEqual(await response.json(), { error: "OpenRouter API key is not configured" });
+  assert.deepEqual(await response.json(), {
+    error: {
+      code: "OPENROUTER_CONFIGURATION",
+      message: "OpenRouter API key is not configured",
+      retryable: false,
+    },
+  });
 });

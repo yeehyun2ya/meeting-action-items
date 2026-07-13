@@ -1,22 +1,43 @@
 import dotenv from "dotenv";
-import express, { type ErrorRequestHandler } from "express";
+import express, { type ErrorRequestHandler, type Response } from "express";
 import {
   AiMeetingValidationError,
   OpenRouterConfigurationError,
+  OpenRouterNetworkError,
   OpenRouterRequestError,
+  OpenRouterTimeoutError,
   parseStructureMeetingRequest,
   structureMeetingMinutes,
 } from "./aiMeeting";
 import { parseCreateMeetingBody } from "./meetingInput";
 import { prisma } from "./prisma";
 
-dotenv.config();
+if (process.env.NODE_ENV !== "test") {
+  dotenv.config();
+}
 
 const port = process.env.PORT ?? "4000";
 
 const app = express();
 
 app.use(express.json());
+
+type AiServiceErrorOptions = {
+  readonly status: number;
+  readonly code: string;
+  readonly message: string;
+  readonly retryable: boolean;
+};
+
+const sendAiServiceError = (response: Response, options: AiServiceErrorOptions): void => {
+  response.status(options.status).json({
+    error: {
+      code: options.code,
+      message: options.message,
+      retryable: options.retryable,
+    },
+  });
+};
 
 const logUnexpectedError = (error: unknown): void => {
   if (error instanceof Error) {
@@ -67,17 +88,52 @@ app.post("/ai/structure-meeting", async (request, response) => {
     response.json(meetingDraft);
   } catch (error) {
     if (error instanceof OpenRouterConfigurationError) {
-      response.status(500).json({ error: error.message });
+      sendAiServiceError(response, {
+        status: 500,
+        code: "OPENROUTER_CONFIGURATION",
+        message: error.message,
+        retryable: false,
+      });
+      return;
+    }
+
+    if (error instanceof OpenRouterTimeoutError) {
+      sendAiServiceError(response, {
+        status: 504,
+        code: "OPENROUTER_TIMEOUT",
+        message: error.message,
+        retryable: error.retryable,
+      });
+      return;
+    }
+
+    if (error instanceof OpenRouterNetworkError) {
+      sendAiServiceError(response, {
+        status: 502,
+        code: "OPENROUTER_NETWORK",
+        message: error.message,
+        retryable: error.retryable,
+      });
       return;
     }
 
     if (error instanceof AiMeetingValidationError) {
-      response.status(502).json({ error: "AI response could not be structured" });
+      sendAiServiceError(response, {
+        status: 502,
+        code: "AI_RESPONSE_INVALID",
+        message: "AI response could not be structured",
+        retryable: error.retryable,
+      });
       return;
     }
 
     if (error instanceof OpenRouterRequestError) {
-      response.status(502).json({ error: "OpenRouter request failed" });
+      sendAiServiceError(response, {
+        status: 502,
+        code: "OPENROUTER_REQUEST_FAILED",
+        message: "OpenRouter request failed",
+        retryable: error.retryable,
+      });
       return;
     }
 

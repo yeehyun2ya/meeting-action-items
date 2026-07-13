@@ -77,15 +77,37 @@ export class OpenRouterConfigurationError extends Error {
 
 export class OpenRouterRequestError extends Error {
   readonly status: number;
+  readonly retryable: boolean;
 
   constructor(status: number) {
-    super("OpenRouter request failed");
+    super(`OpenRouter request failed with status ${status}`);
     this.name = "OpenRouterRequestError";
     this.status = status;
+    this.retryable = status === 408 || status === 429 || status >= 500;
+  }
+}
+
+export class OpenRouterTimeoutError extends Error {
+  readonly retryable = true;
+
+  constructor() {
+    super("OpenRouter request timed out");
+    this.name = "OpenRouterTimeoutError";
+  }
+}
+
+export class OpenRouterNetworkError extends Error {
+  readonly retryable = true;
+
+  constructor() {
+    super("OpenRouter request failed before receiving a response");
+    this.name = "OpenRouterNetworkError";
   }
 }
 
 export class AiMeetingValidationError extends Error {
+  readonly retryable = false;
+
   constructor(message: string) {
     super(message);
     this.name = "AiMeetingValidationError";
@@ -131,36 +153,61 @@ export const structureMeetingMinutes = async (minutes: string): Promise<MeetingD
     throw new OpenRouterConfigurationError();
   }
 
-  const response = await fetch(openRouterUrl, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: openRouterModel,
-      messages: [
-        {
-          role: "system",
-          content:
-            "You structure Korean meeting minutes into JSON only. Return no markdown, no code fences, and no explanation. If an assignee or due date is not explicitly present in the source text, return null. dueDate must be an ISO UTC string like 2026-07-14T00:00:00.000Z or null.",
-        },
-        {
-          role: "user",
-          content: `Return exactly this JSON shape: {"title":"...","minutes":"...","actionItems":[{"content":"...","assignee":null,"dueDate":null}]}\n\nMeeting minutes:\n${minutes}`,
-        },
-      ],
-      temperature: 0,
-      max_tokens: 1200,
-    }),
-    signal: AbortSignal.timeout(requestTimeoutMs),
-  });
+  let response: Response;
+
+  try {
+    response = await fetch(openRouterUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: openRouterModel,
+        messages: [
+          {
+            role: "system",
+            content:
+              "You structure Korean meeting minutes into JSON only. Return no markdown, no code fences, and no explanation. If an assignee or due date is not explicitly present in the source text, return null. dueDate must be an ISO UTC string like 2026-07-14T00:00:00.000Z or null.",
+          },
+          {
+            role: "user",
+            content: `Return exactly this JSON shape: {"title":"...","minutes":"...","actionItems":[{"content":"...","assignee":null,"dueDate":null}]}\n\nMeeting minutes:\n${minutes}`,
+          },
+        ],
+        temperature: 0,
+        max_tokens: 1200,
+      }),
+      signal: AbortSignal.timeout(requestTimeoutMs),
+    });
+  } catch (error) {
+    if (error instanceof DOMException && (error.name === "TimeoutError" || error.name === "AbortError")) {
+      throw new OpenRouterTimeoutError();
+    }
+
+    if (error instanceof TypeError) {
+      throw new OpenRouterNetworkError();
+    }
+
+    throw error;
+  }
 
   if (!response.ok) {
     throw new OpenRouterRequestError(response.status);
   }
 
-  const responseBody: unknown = await response.json();
+  let responseBody: unknown;
+
+  try {
+    responseBody = await response.json();
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      throw new AiMeetingValidationError("OpenRouter response was not valid JSON");
+    }
+
+    throw error;
+  }
+
   const parseResult = openRouterResponseSchema.safeParse(responseBody);
 
   if (!parseResult.success) {
