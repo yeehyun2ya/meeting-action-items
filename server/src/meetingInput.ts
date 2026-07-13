@@ -70,9 +70,17 @@ const parseNullableDate = (value: unknown): Date | null | undefined => {
     return undefined;
   }
 
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value)) {
+    return undefined;
+  }
+
   const date = new Date(value);
 
-  return Number.isNaN(date.getTime()) ? undefined : date;
+  if (Number.isNaN(date.getTime()) || date.toISOString() !== value) {
+    return undefined;
+  }
+
+  return date;
 };
 
 const parseActionItem = (value: unknown): ParseActionItemResult => {

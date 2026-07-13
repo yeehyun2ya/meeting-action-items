@@ -1,5 +1,5 @@
 import dotenv from "dotenv";
-import express from "express";
+import express, { type ErrorRequestHandler } from "express";
 import { parseCreateMeetingBody } from "./meetingInput";
 import { prisma } from "./prisma";
 
@@ -18,6 +18,28 @@ const logUnexpectedError = (error: unknown): void => {
   }
 
   console.error("Unexpected non-error thrown", error);
+};
+
+const isJsonParseError = (error: unknown): boolean => {
+  if (!(error instanceof SyntaxError)) {
+    return false;
+  }
+
+  if (typeof error !== "object" || error === null || !("status" in error)) {
+    return false;
+  }
+
+  return error.status === 400;
+};
+
+const handleRequestError: ErrorRequestHandler = (error, _request, response, _next) => {
+  if (isJsonParseError(error)) {
+    response.status(400).json({ error: "Request body must be valid JSON" });
+    return;
+  }
+
+  logUnexpectedError(error);
+  response.status(500).json({ error: "Unexpected request error" });
 };
 
 app.get("/health", (_request, response) => {
@@ -139,6 +161,8 @@ app.get("/meetings/:id", async (request, response) => {
     response.status(500).json({ error: "Failed to get meeting" });
   }
 });
+
+app.use(handleRequestError);
 
 app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
