@@ -37,6 +37,7 @@ const startServer = async () => {
     env: {
       ...env,
       NODE_ENV: "test",
+      OPENROUTER_API_KEY: "",
       PORT: testPort,
     },
     stdio: ["ignore", "pipe", "pipe"],

@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 const openRouterUrl = "https://openrouter.ai/api/v1/chat/completions";
-const openRouterModel = "tencent/hy3:free";
+const openRouterModel = "google/gemma-4-26b-a4b-it:free";
 const requestTimeoutMs = 30000;
 
 const requiredTextSchema = z.string().trim().min(1);
