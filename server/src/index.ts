@@ -1,5 +1,12 @@
 import dotenv from "dotenv";
 import express, { type ErrorRequestHandler } from "express";
+import {
+  AiMeetingValidationError,
+  OpenRouterConfigurationError,
+  OpenRouterRequestError,
+  parseStructureMeetingRequest,
+  structureMeetingMinutes,
+} from "./aiMeeting";
 import { parseCreateMeetingBody } from "./meetingInput";
 import { prisma } from "./prisma";
 
@@ -44,6 +51,39 @@ const handleRequestError: ErrorRequestHandler = (error, _request, response, _nex
 
 app.get("/health", (_request, response) => {
   response.json({ status: "ok" });
+});
+
+app.post("/ai/structure-meeting", async (request, response) => {
+  const parseResult = parseStructureMeetingRequest(request.body);
+
+  if (!parseResult.ok) {
+    response.status(400).json({ error: parseResult.message });
+    return;
+  }
+
+  try {
+    const meetingDraft = await structureMeetingMinutes(parseResult.minutes);
+
+    response.json(meetingDraft);
+  } catch (error) {
+    if (error instanceof OpenRouterConfigurationError) {
+      response.status(500).json({ error: error.message });
+      return;
+    }
+
+    if (error instanceof AiMeetingValidationError) {
+      response.status(502).json({ error: "AI response could not be structured" });
+      return;
+    }
+
+    if (error instanceof OpenRouterRequestError) {
+      response.status(502).json({ error: "OpenRouter request failed" });
+      return;
+    }
+
+    logUnexpectedError(error);
+    response.status(500).json({ error: "Failed to structure meeting minutes" });
+  }
 });
 
 app.post("/meetings", async (request, response) => {
