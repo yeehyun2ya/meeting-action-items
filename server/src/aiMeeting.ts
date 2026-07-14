@@ -1,10 +1,17 @@
 import { z } from "zod";
 
-const openRouterUrl = "https://openrouter.ai/api/v1/chat/completions";
+const openRouterUrl = process.env.OPENROUTER_URL ?? "https://openrouter.ai/api/v1/chat/completions";
 const openRouterModel = "google/gemma-4-26b-a4b-it:free";
 const requestTimeoutMs = 30000;
 
 const requiredTextSchema = z.string().trim().min(1);
+
+const sourceBackedTextItemSchema = z
+  .object({
+    content: requiredTextSchema,
+    sourceQuote: requiredTextSchema,
+  })
+  .strict();
 
 const isoDateStringSchema = z.string().refine((value) => {
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value)) {
@@ -20,17 +27,37 @@ const meetingDraftSchema = z
   .object({
     title: requiredTextSchema,
     minutes: requiredTextSchema,
+    decisions: z.array(sourceBackedTextItemSchema),
     actionItems: z.array(
       z
         .object({
           content: requiredTextSchema,
+          sourceQuote: requiredTextSchema,
           assignee: requiredTextSchema.nullable(),
           dueDate: isoDateStringSchema.nullable(),
+          dueDateRaw: requiredTextSchema.nullable(),
         })
         .strict(),
     ),
+    discussions: z.array(sourceBackedTextItemSchema),
   })
   .strict();
+
+const structureMeetingSystemPrompt = [
+  "You structure Korean meeting minutes into JSON only.",
+  "Return no markdown, no code fences, and no explanation.",
+  "분류 기준:",
+  "- 결정사항(decisions): 회의에서 확정된 사항. 이미 정해진 것.",
+  "- 액션아이템(actionItems): 앞으로 누군가 해야 할 일. 담당자와 기한이 원문에 있으면 채우고, 없으면 반드시 null로 둔다. 추정하지 않는다.",
+  "- 논의사항(discussions): 안건에 대해 논의됐으나 결론이 나지 않은 내용.",
+  "세 분류 중 해당 항목이 없으면 빈 배열을 반환한다. 억지로 채우지 않는다.",
+  "같은 문장을 결정사항, 액션아이템, 논의사항에 중복해서 넣지 않는다.",
+  "인사말, 잡담, 단순 정보 공유, 배경 설명은 어느 분류에도 포함하지 않는다. 예: '지난달 매출이 12% 올랐습니다'처럼 결론도 실행도 요구하지 않는 단순 보고는 제외한다.",
+  "sourceQuote는 반드시 입력된 회의록 원문에 실제로 존재하는 문장을 그대로 옮겨 적어야 한다. 요약하거나 변형하지 말 것.",
+  "dueDateRaw에는 원문에 나온 기한 표현을 그대로 옮겨 적는다. 변형하지 않는다. 기한 언급이 없으면 null.",
+  "'다음 주까지', '금요일까지' 같은 상대적 표현은 절대 날짜로 계산하지 않는다. dueDate는 null로 두고 dueDateRaw에만 표현을 담는다. 원문에 '7월 20일'처럼 명시적 날짜가 있을 때만 dueDate를 채운다.",
+  "dueDate must be an ISO UTC string like 2026-07-14T00:00:00.000Z or null.",
+].join("\n");
 
 const structureMeetingRequestSchema = z
   .object({
@@ -146,6 +173,39 @@ export const parseOpenRouterMeetingDraft = (content: string): MeetingDraft => {
   return parseResult.data;
 };
 
+const normalizeWhitespace = (value: string): string => value.trim().replace(/\s+/g, " ");
+
+const assertSourceQuoteInMinutes = (
+  normalizedMinutes: string,
+  category: "decisions" | "actionItems" | "discussions",
+  index: number,
+  sourceQuote: string,
+): void => {
+  if (normalizedMinutes.includes(normalizeWhitespace(sourceQuote))) {
+    return;
+  }
+
+  throw new AiMeetingValidationError(
+    `AI response sourceQuote was not found in source minutes: ${category}[${index}].sourceQuote="${sourceQuote}"`,
+  );
+};
+
+const validateMeetingDraftSourceQuotes = (meetingDraft: MeetingDraft, minutes: string): void => {
+  const normalizedMinutes = normalizeWhitespace(minutes);
+
+  meetingDraft.decisions.forEach((decision, index) => {
+    assertSourceQuoteInMinutes(normalizedMinutes, "decisions", index, decision.sourceQuote);
+  });
+
+  meetingDraft.actionItems.forEach((actionItem, index) => {
+    assertSourceQuoteInMinutes(normalizedMinutes, "actionItems", index, actionItem.sourceQuote);
+  });
+
+  meetingDraft.discussions.forEach((discussion, index) => {
+    assertSourceQuoteInMinutes(normalizedMinutes, "discussions", index, discussion.sourceQuote);
+  });
+};
+
 export const structureMeetingMinutes = async (minutes: string): Promise<MeetingDraft> => {
   const apiKey = process.env.OPENROUTER_API_KEY?.trim();
 
@@ -167,12 +227,11 @@ export const structureMeetingMinutes = async (minutes: string): Promise<MeetingD
         messages: [
           {
             role: "system",
-            content:
-              "You structure Korean meeting minutes into JSON only. Return no markdown, no code fences, and no explanation. If an assignee or due date is not explicitly present in the source text, return null. dueDate must be an ISO UTC string like 2026-07-14T00:00:00.000Z or null.",
+            content: structureMeetingSystemPrompt,
           },
           {
             role: "user",
-            content: `Return exactly this JSON shape: {"title":"...","minutes":"...","actionItems":[{"content":"...","assignee":null,"dueDate":null}]}\n\nMeeting minutes:\n${minutes}`,
+            content: `Return exactly this JSON shape: {"title":"...","minutes":"...","decisions":[{"content":"...","sourceQuote":"..."}],"actionItems":[{"content":"...","sourceQuote":"...","assignee":null,"dueDate":null,"dueDateRaw":null}],"discussions":[{"content":"...","sourceQuote":"..."}]}\n\nMeeting minutes:\n${minutes}`,
           },
         ],
         temperature: 0,
@@ -220,5 +279,8 @@ export const structureMeetingMinutes = async (minutes: string): Promise<MeetingD
     throw new AiMeetingValidationError("OpenRouter response did not include AI message content");
   }
 
-  return parseOpenRouterMeetingDraft(firstChoice.message.content);
+  const meetingDraft = parseOpenRouterMeetingDraft(firstChoice.message.content);
+  validateMeetingDraftSourceQuotes(meetingDraft, minutes);
+
+  return meetingDraft;
 };

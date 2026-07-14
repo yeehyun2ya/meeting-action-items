@@ -14,15 +14,39 @@ model Meeting {
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
   actionItems ActionItem[]
+  decisions   Decision[]
+  discussions Discussion[]
 }
 
 model ActionItem {
-  id        String   @id @default(cuid())
-  content   String
-  assignee  String?
-  dueDate   DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  meetingId String
-  meeting   Meeting  @relation(fields: [meetingId], references: [id])
+  id          String   @id @default(cuid())
+  content     String
+  sourceQuote String
+  assignee    String?
+  dueDate     DateTime?
+  dueDateRaw  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  meetingId   String
+  meeting     Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+}
+
+model Decision {
+  id          String   @id @default(cuid())
+  content     String
+  sourceQuote String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  meetingId   String
+  meeting     Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+}
+
+model Discussion {
+  id          String   @id @default(cuid())
+  content     String
+  sourceQuote String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  meetingId   String
+  meeting     Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
 }
