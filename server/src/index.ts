@@ -10,6 +10,7 @@ import {
   structureMeetingMinutes,
 } from "./aiMeeting";
 import { meetingRouter } from "./meetingRoutes";
+import { mutationRouter } from "./routes/mutationRoutes";
 import { logUnexpectedError } from "./requestLogging";
 
 if (process.env.NODE_ENV !== "test") {
@@ -134,6 +135,7 @@ app.post("/ai/structure-meeting", async (request, response) => {
 });
 
 app.use("/meetings", meetingRouter);
+app.use(mutationRouter);
 
 app.use(handleRequestError);
 
