@@ -171,7 +171,9 @@ test("meeting API returns JSON 400 for malformed JSON and rollover dueDate", asy
 
   assert.equal(malformedResponse.status, 400);
   assert.deepEqual(await malformedResponse.json(), {
-    error: "Request body must be valid JSON",
+    code: "INVALID_JSON",
+    message: "요청 본문이 올바른 JSON이 아닙니다",
+    retryable: false,
   });
 
   const rolloverResponse = await fetch(`${baseUrl}/meetings`, {
@@ -229,5 +231,9 @@ test("meeting API rejects blank sourceQuote", async (t) => {
   });
 
   assert.equal(response.status, 400);
-  assert.deepEqual(await response.json(), { error: "actionItems.sourceQuote is required" });
+  assert.deepEqual(await response.json(), {
+    code: "VALIDATION_ERROR",
+    message: "actionItems.sourceQuote is required",
+    retryable: false,
+  });
 });

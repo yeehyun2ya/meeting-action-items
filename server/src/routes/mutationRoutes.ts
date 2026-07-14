@@ -13,6 +13,7 @@ import {
   discussionPointPatchSchema,
   type DiscussionPointPatchInput,
 } from "../schemas/discussionPointPatchSchema";
+import { sendError } from "../errors/apiError";
 import { meetingPatchSchema } from "../schemas/meetingPatchSchema";
 import { prisma } from "../prisma";
 
@@ -72,9 +73,10 @@ const sendValidationError = (
   response: Response,
   message: string,
 ): void => {
-  response.status(400).json({
+  sendError(response, 400, {
     code: "VALIDATION_ERROR",
     message,
+    retryable: false,
   });
 };
 
@@ -82,9 +84,10 @@ const sendNotFoundError = (
   response: Response,
   resource: NotFoundResource,
 ): void => {
-  response.status(404).json({
+  sendError(response, 404, {
     code: "NOT_FOUND",
     message: `${resource}을 찾을 수 없습니다`,
+    retryable: false,
   });
 };
 

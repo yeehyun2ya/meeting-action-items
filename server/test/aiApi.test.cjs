@@ -116,7 +116,11 @@ test("AI structure API rejects missing minutes", async (t) => {
   });
 
   assert.equal(response.status, 400);
-  assert.deepEqual(await response.json(), { error: "minutes is required" });
+  assert.deepEqual(await response.json(), {
+    code: "VALIDATION_ERROR",
+    message: "minutes is required",
+    retryable: false,
+  });
 });
 
 test("AI structure API reports missing OpenRouter key without exposing secrets", async (t) => {
@@ -136,11 +140,9 @@ test("AI structure API reports missing OpenRouter key without exposing secrets",
 
   assert.equal(response.status, 500);
   assert.deepEqual(await response.json(), {
-    error: {
-      code: "OPENROUTER_CONFIGURATION",
-      message: "OpenRouter API key is not configured",
-      retryable: false,
-    },
+    code: "OPENROUTER_CONFIGURATION",
+    message: "OpenRouter API key is not configured",
+    retryable: false,
   });
 });
 
@@ -179,10 +181,8 @@ test("AI structure API returns 502 when sourceQuote is not found in source minut
 
   assert.equal(response.status, 502);
   assert.deepEqual(await response.json(), {
-    error: {
-      code: "AI_RESPONSE_INVALID",
-      message: "AI response could not be structured",
-      retryable: false,
-    },
+    code: "AI_RESPONSE_INVALID",
+    message: "AI response could not be structured",
+    retryable: false,
   });
 });

@@ -10,6 +10,7 @@ import {
   parseStructureMeetingRequest,
   structureMeetingMinutes,
 } from "./aiMeeting";
+import { sendError, type ApiErrorBody } from "./errors/apiError";
 import { meetingRouter } from "./meetingRoutes";
 import { mutationRouter } from "./routes/mutationRoutes";
 import { logUnexpectedError } from "./requestLogging";
@@ -25,20 +26,15 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
-type AiServiceErrorOptions = {
+type AiServiceErrorOptions = ApiErrorBody & {
   readonly status: number;
-  readonly code: string;
-  readonly message: string;
-  readonly retryable: boolean;
 };
 
 const sendAiServiceError = (response: Response, options: AiServiceErrorOptions): void => {
-  response.status(options.status).json({
-    error: {
-      code: options.code,
-      message: options.message,
-      retryable: options.retryable,
-    },
+  sendError(response, options.status, {
+    code: options.code,
+    message: options.message,
+    retryable: options.retryable,
   });
 };
 
@@ -56,12 +52,20 @@ const isJsonParseError = (error: unknown): boolean => {
 
 const handleRequestError: ErrorRequestHandler = (error, _request, response, _next) => {
   if (isJsonParseError(error)) {
-    response.status(400).json({ error: "Request body must be valid JSON" });
+    sendError(response, 400, {
+      code: "INVALID_JSON",
+      message: "요청 본문이 올바른 JSON이 아닙니다",
+      retryable: false,
+    });
     return;
   }
 
   logUnexpectedError(error);
-  response.status(500).json({ error: "Unexpected request error" });
+  sendError(response, 500, {
+    code: "INTERNAL_ERROR",
+    message: "예기치 못한 오류가 발생했습니다",
+    retryable: false,
+  });
 };
 
 app.get("/health", (_request, response) => {
@@ -72,7 +76,11 @@ app.post("/ai/structure-meeting", async (request, response) => {
   const parseResult = parseStructureMeetingRequest(request.body);
 
   if (!parseResult.ok) {
-    response.status(400).json({ error: parseResult.message });
+    sendError(response, 400, {
+      code: "VALIDATION_ERROR",
+      message: parseResult.message,
+      retryable: false,
+    });
     return;
   }
 
@@ -132,7 +140,11 @@ app.post("/ai/structure-meeting", async (request, response) => {
     }
 
     logUnexpectedError(error);
-    response.status(500).json({ error: "Failed to structure meeting minutes" });
+    sendError(response, 500, {
+      code: "INTERNAL_ERROR",
+      message: "Failed to structure meeting minutes",
+      retryable: false,
+    });
   }
 });
 

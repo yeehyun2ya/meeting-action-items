@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { sendError } from "./errors/apiError";
 import { parseCreateMeetingBody } from "./meetingInput";
 import { prisma } from "./prisma";
 import { logUnexpectedError } from "./requestLogging";
@@ -9,7 +10,11 @@ meetingRouter.post("/", async (request, response) => {
   const parseResult = parseCreateMeetingBody(request.body);
 
   if (!parseResult.ok) {
-    response.status(400).json({ error: parseResult.message });
+    sendError(response, 400, {
+      code: "VALIDATION_ERROR",
+      message: parseResult.message,
+      retryable: false,
+    });
     return;
   }
 
@@ -62,7 +67,11 @@ meetingRouter.post("/", async (request, response) => {
     response.status(201).json(meeting);
   } catch (error) {
     logUnexpectedError(error);
-    response.status(500).json({ error: "Failed to create meeting" });
+    sendError(response, 500, {
+      code: "INTERNAL_ERROR",
+      message: "Failed to create meeting",
+      retryable: false,
+    });
   }
 });
 
@@ -137,7 +146,11 @@ meetingRouter.get("/", async (_request, response) => {
     response.json(meetingSummaries);
   } catch (error) {
     logUnexpectedError(error);
-    response.status(500).json({ error: "Failed to list meetings" });
+    sendError(response, 500, {
+      code: "INTERNAL_ERROR",
+      message: "Failed to list meetings",
+      retryable: false,
+    });
   }
 });
 
@@ -145,7 +158,11 @@ meetingRouter.get("/:id", async (request, response) => {
   const meetingId = request.params.id.trim();
 
   if (meetingId.length === 0) {
-    response.status(400).json({ error: "Meeting id is required" });
+    sendError(response, 400, {
+      code: "VALIDATION_ERROR",
+      message: "Meeting id is required",
+      retryable: false,
+    });
     return;
   }
 
@@ -174,13 +191,21 @@ meetingRouter.get("/:id", async (request, response) => {
     });
 
     if (meeting === null) {
-      response.status(404).json({ error: "Meeting not found" });
+      sendError(response, 404, {
+        code: "NOT_FOUND",
+        message: "Meeting not found",
+        retryable: false,
+      });
       return;
     }
 
     response.json(meeting);
   } catch (error) {
     logUnexpectedError(error);
-    response.status(500).json({ error: "Failed to get meeting" });
+    sendError(response, 500, {
+      code: "INTERNAL_ERROR",
+      message: "Failed to get meeting",
+      retryable: false,
+    });
   }
 });
