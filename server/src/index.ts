@@ -1,3 +1,4 @@
+import cors from "cors";
 import dotenv from "dotenv";
 import express, { type ErrorRequestHandler, type Response } from "express";
 import {
@@ -22,6 +23,7 @@ const port = process.env.PORT ?? "4000";
 const app = express();
 
 app.use(express.json());
+app.use(cors());
 
 type AiServiceErrorOptions = {
   readonly status: number;
