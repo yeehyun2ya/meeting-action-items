@@ -24,7 +24,8 @@ const port = process.env.PORT ?? "4000";
 const app = express();
 
 app.use(express.json());
-app.use(cors());
+const corsOrigin = process.env.CORS_ORIGIN;
+app.use(cors(corsOrigin ? { origin: corsOrigin } : undefined));
 
 type AiServiceErrorOptions = ApiErrorBody & {
   readonly status: number;
